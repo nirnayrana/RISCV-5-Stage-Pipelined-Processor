@@ -17,5 +17,6 @@ This project implements a fully synthesized **5-Stage Pipelined Processor** base
 
 ## Simulation
 The design was simulated using Icarus Verilog and GTKWave.
-(./docs/bcd_test_pipeline_processor.png)
+(./docs/bcd_test_pipeline_processor.png)<img width="1355" height="542" alt="bcd_test_pipeline_processor" src="https://github.com/user-attachments/assets/fd76deb8-d3f1-4441-a71b-3c76a6494333" />
+
 * **Testbench:** `cpu_pipe_tb.v` runs a full program cycle verifying the Data Forwarding logic.
