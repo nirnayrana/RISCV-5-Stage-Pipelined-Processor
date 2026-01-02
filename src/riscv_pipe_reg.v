@@ -6,7 +6,7 @@ module riscv_pipe_reg #(parameter N=32) (
     input wire [N-1:0]d,
     output reg [N-1:0]q
 );
-    always @(posedge clk or posedge rst) begin
+    always @(posedge clk or negedge rst) begin
         if (rst) q<=0;
         else if (clear) q<=0;
         else if (en) q<=d;
