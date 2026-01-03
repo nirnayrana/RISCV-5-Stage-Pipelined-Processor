@@ -33,3 +33,13 @@ Moved the processor from a standard user-mode core to a **Privileged Architectur
 ### 🐛 Bug Fixes
 * **Pipeline Hazard:** Fixed a critical bug where the instruction in the `Fetch` stage would execute during a Trap.
     * *Solution:* Implemented synchronous `NOP` injection in the IF/ID pipeline register.
+<<<<<<< HEAD
+=======
+
+### 📉 Verification
+Running the "Crash Test" assembly program:
+1.  CPU initializes vectors.
+2.  Executes `0xFFFFFFFF` (Illegal Opcode).
+3.  Traps to address `0x14`.
+4.  Recovery code executes successfully (`x4 = 0x58`).
+>>>>>>> 31a986688cdedbd17e01aee4fbb287443fd77936
