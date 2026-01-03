@@ -1,7 +1,9 @@
 `timescale 1ns/1ns
 module riscv_pipeline_top (
     input wire clk,
-    input wire rst
+    input wire rst,
+    output wire io_valid, // <--- NEW
+    output wire [7:0] io_data
 );
 
     // ==========================================
@@ -95,7 +97,8 @@ module riscv_pipeline_top (
         .CSRWrite(CSRWrite_D),   // Connect to the wire we defined
         .CSRRead(CSRRead_D),     // Connect to the wire we defined
         .IsMRET(),
-        .IllegalInst(IllegalInst_D)
+        .IllegalInst(IllegalInst_D),
+        .ExtensionEnable(ExtensionEnable_D)
 
         // .CSRWrite(CSRWrite_D)  <-- You must add this port to your Control Unit!
         // .CSRRead(CSRRead_D)    <-- You must add this port to your Control Unit!
@@ -141,9 +144,10 @@ module riscv_pipeline_top (
     // CSR Pipeline Signals
     wire [11:0] CSR_Addr_E;
     wire        CSRWrite_E;
+    wire [6:0] Opcode_E;
 
     // Added 13 bits to width (12 addr + 1 WE) -> N = 160 + 13 = 173
-    riscv_pipe_reg #(.N(173)) ID_EX_REG (
+    riscv_pipe_reg #(.N(181)) ID_EX_REG (
         .clk(clk),
         .rst(rst),
         .clear(Trap_Take), 
@@ -151,11 +155,11 @@ module riscv_pipeline_top (
         .d({CSRWrite_D, CSR_Addr_D,      // <-- Added CSR Signals
             RegWrite_D, MemtoReg_D, MemWrite_D, Branch_D, ALUSrc_D, ALUOp_D,  
             PC_D, RD1_D, RD2_D, Imm_D,                                         
-            rd_D, rs1_D, rs2_D, funct3_D, funct7_D}),                          
+            rd_D, rs1_D, rs2_D, funct3_D, funct7_D,ExtensionEnable_D,opcode}),                          
         .q({CSRWrite_E, CSR_Addr_E,      // <-- unpacked CSR Signals
             RegWrite_E, MemtoReg_E, MemWrite_E, Branch_E, ALUSrc_E, ALUOp_E,
             PC_E, RD1_E, RD2_E, Imm_E,
-            rd_E, rs1_E, rs2_E, funct3_E, funct7_E})
+            rd_E, rs1_E, rs2_E, funct3_E, funct7_E,ExtensionEnable_E,Opcode_E})
     );
 
     // ==========================================
@@ -179,6 +183,7 @@ module riscv_pipeline_top (
 
     // --- 3-WAY MUX FOR SOURCE A (rs1) ---
     reg [31:0] SrcA_Forwarded;
+    
     wire [31:0] ALUResult_M; // Forward declaration
     wire [31:0] Result_W;    // Forward declaration
 
@@ -208,24 +213,51 @@ module riscv_pipeline_top (
 
     // --- ALU CONTROL ---
     wire [3:0] ALUControl_E;
+    
     riscv_alu_decoder ALU_DEC (
         .alu_op(ALUOp_E),
         .funct3(funct3_E),
         .funct7(funct7_E[5]), 
-        .op(Instr_D[6:0]), // Note: Ideally pass Opcode through pipeline too
+        .op(Opcode_E), // Note: Ideally pass Opcode through pipeline too
         .alu_ctrl(ALUControl_E)
     );
 
     wire [31:0] ALUResult_E;
     wire Zero_E;
+    wire IsLUI_E = (ALUOp_E == 2'b11);
+
+    // 2. Mux to force 0 if LUI, otherwise use forwarded value
+    wire [31:0] ALU_Input_A_Fixed;
+    assign ALU_Input_A_Fixed = (IsLUI_E) ? 32'b0 : SrcA_Forwarded;
     
     riscv_alu4b ALU (
-        .a(SrcA_Forwarded),    
+        .a(ALU_Input_A_Fixed),    
         .b(SrcB_E),            
         .alu_ctrl(ALUControl_E),
         .result(ALUResult_E),
         .zero(Zero_E)
     );
+    wire [31:0] ExtensionResult_E;
+    
+    custom_extension_unit CXU (
+        .operand_a(SrcA_Forwarded),
+        .operand_b(SrcB_E),
+        .funct3(funct3_E),
+        .funct7(funct7_E),
+        .enable(ExtensionEnable_E), // From Pipeline Reg
+        .result(ExtensionResult_E)
+    );
+
+    // 3. The Result Mux (The Junction)
+    // We need to decide: Did we run a Standard Instruction or a Custom one?
+    reg [31:0] Final_Execute_Result;
+    
+    always @(*) begin
+        if (ExtensionEnable_E) 
+            Final_Execute_Result = ExtensionResult_E;
+        else 
+            Final_Execute_Result = ALUResult_E;
+    end
 
     wire [31:0] PCTarget_E;
     assign PCTarget_E = PC_E + Imm_E;
@@ -245,12 +277,12 @@ module riscv_pipeline_top (
     riscv_pipe_reg #(.N(151)) EX_MEM_REG (
         .clk(clk),
         .rst(rst),
-        .clear(Trap_Take),
+        .clear(1'b0),
         .en(1'b1),
         // PACK INPUTS
         .d({CSRWrite_E, CSR_Addr_E, CSR_WriteData_M, // <-- Added CSR
             RegWrite_E, MemtoReg_E, MemWrite_E, Branch_E, Zero_E,
-            ALUResult_E, WriteData_E, PCTarget_E, rd_E}), 
+            Final_Execute_Result, WriteData_E, PCTarget_E, rd_E}), 
         // UNPACK OUTPUTS
         .q({CSRWrite_M, CSR_Addr_M, CSR_WriteData_M, // <-- Unpacked CSR
             RegWrite_M, MemtoReg_M, MemWrite_M, Branch_M, Zero_M,
@@ -267,7 +299,9 @@ module riscv_pipeline_top (
         .we(MemWrite_M),
         .a(ALUResult_M),
         .wd(WriteData_M),
-        .rd(ReadData_M)
+        .rd(ReadData_M),
+        .io_valid(io_valid), // <--- CONNECT
+        .io_data(io_data)
     );
 
     assign PCSrc_M = Branch_M & Zero_M;
@@ -287,7 +321,7 @@ module riscv_pipeline_top (
     riscv_pipe_reg #(.N(116)) MEM_WB_REG (
         .clk(clk),
         .rst(rst),
-        .clear(Trap_Take),
+        .clear(1'b0),
         .en(1'b1),
         .d({CSRWrite_M, CSR_Addr_M, CSR_WriteData_M, // <-- Added CSR
             RegWrite_M, MemtoReg_M, ALUResult_M, ReadData_M, rd_M}),
@@ -333,6 +367,6 @@ module riscv_pipeline_top (
     assign RegWriteData_W = Result_W; 
 
     // Trap Logic (Placeholder)
-    assign Trap_Take = 1'b0; // Connect this to Exception logic later!
+     // Connect this to Exception logic later!
 
 endmodule
