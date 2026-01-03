@@ -20,3 +20,16 @@ The design was simulated using Icarus Verilog and GTKWave.
 (./docs/bcd_test_pipeline_processor.png)<img width="1355" height="542" alt="bcd_test_pipeline_processor" src="https://github.com/user-attachments/assets/fd76deb8-d3f1-4441-a71b-3c76a6494333" />
 
 * **Testbench:** `cpu_pipe_tb.v` runs a full program cycle verifying the Data Forwarding logic.
+* ## 🚀 Latest Update: Privilege Levels & Exception Handling
+**Date:** 2/1/2026
+
+Moved the processor from a standard user-mode core to a **Privileged Architecture**.
+
+### 🆕 New Features
+* **CSR Unit (Control Status Registers):** Implemented `mstatus`, `mepc`, `mtvec`, and `mcause`.
+* **Hardware Traps:** CPU now automatically detects `Illegal Instructions`, flushes the pipeline, and jumps to the Exception Handler.
+* **Zicsr Support:** Added support for `CSRRW`, `CSRRS`, `MRET` instructions.
+
+### 🐛 Bug Fixes
+* **Pipeline Hazard:** Fixed a critical bug where the instruction in the `Fetch` stage would execute during a Trap.
+    * *Solution:* Implemented synchronous `NOP` injection in the IF/ID pipeline register.
