@@ -4,40 +4,28 @@ module riscv_imem (
 );
     reg [31:0] RAM [63:0];
     // ... inside your riscv_imem module ...
+    // ... inside riscv_imem.v ...
     initial begin
-        // --- INITIALIZATION ---
-        // 0. Set MTVEC (The Hospital Address) to 20 (0x14)
-        // PC=0: ADDI x1, x0, 20
-        RAM[0] = 32'h01400093; 
-        
-        // PC=4: CSRRW x0, mtvec, x1 (Write 20 to mtvec)
-        RAM[1] = 32'h30509073; 
+        // 1. Load IO Address (0x80000000) into x1
+        // LUI x1, 0x80000
+        RAM[0] = 32'h800000B7; 
 
-        // 1. A Normal Instruction (Verification that we started ok)
-        // PC=8: ADDI x2, x0, 15 (x2 = 15)
-        RAM[2] = 32'h00F00113; 
+        // 2. Load 'V' (0x56) into x2
+        // ADDI x2, x0, 0x56
+        RAM[1] = 32'h05600113;
 
-        // --- THE CRASH EVENT ---
-        // 2. THE ILLEGAL INSTRUCTION 
-        // PC=12: 0xFFFFFFFF (Invalid Opcode). 
-        // CPU should: Detect Illegal -> Save PC(12) to mepc -> Jump to mtvec(20).
-        RAM[3] = 32'hFFFFFFFF; 
+        // 3. Print 'V' (Store Word x2 into address at x1)
+        // SW x2, 0(x1) -> Writes 0x56 to 0x80000000
+        RAM[2] = 32'h0020A023;
 
-        // 3. The "Unreachable" Code (We should SKIP this)
-        // PC=16: ADDI x3, x0, 7 (x3 SHOULD REMAIN 0)
-        RAM[4] = 32'h00700193; 
+        // 4. Load 'A' (0x41) into x2
+        RAM[3] = 32'h04100113;
 
-        // --- TRAP HANDLER (Address 20 / 0x14) ---
-        // 4. The "Hospital" Code (Success Indicator)
-        // PC=20: ADDI x4, x0, 88 (0x58) -> "I AM ALIVE"
-        RAM[5] = 32'h05800213; 
-        
-        // 5. Loop forever
-        RAM[6] = 32'h00000063; 
-        
-        // Fill rest with NOPs
-        RAM[7] = 32'h00000013;
-        RAM[8] = 32'h00000013;
+        // 5. Print 'A'
+        RAM[4] = 32'h0020A023;
+
+        // 6. Loop forever
+        RAM[5] = 32'h00000063;
     end
     assign rd = RAM[a[31:2]]; 
 endmodule
